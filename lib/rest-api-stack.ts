@@ -1,4 +1,4 @@
-import { aws_lambda_nodejs, aws_apigateway, aws_dynamodb, Stack, StackProps } from 'aws-cdk-lib';
+import { aws_lambda_nodejs, aws_apigateway, aws_dynamodb, aws_iam, Stack, StackProps } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 
 export class RestApiStack extends Stack {
@@ -66,8 +66,38 @@ export class RestApiStack extends Stack {
         functionName: deleteBlogPostLambdaName,
         environment: { TABLE_NAME: table.tableName }
       }
-    )
+    );
     table.grantWriteData(deleteBlogPostLambda);
+
+    // Implement API SWAGGER DOCS
+    const apiDocsLambdaName = 'apiDocsHandler';
+    const apiDocsLambda = new aws_lambda_nodejs.NodejsFunction(
+      this,
+      apiDocsLambdaName,
+      {
+        entry: "lib/lambdas/blog-post-handler.ts",
+        handler: apiDocsLambdaName,
+        functionName: apiDocsLambdaName,
+        environment: { API_ID: api.restApiId } // RestAPI ID
+      }
+    );
+
+    // Grant the lambda function the IAM policy to allow access to the swagger file from the API gateway
+    const _policy = new aws_iam.PolicyStatement({
+      actions: ["apigateway:GET"],
+      resources: ["*"],
+    });
+    apiDocsLambda.role?.addToPrincipalPolicy(_policy);
+    const apiDocsPath = api.root.addResource("api-docs");
+    apiDocsPath.addMethod(
+      "GET",
+      new aws_apigateway.LambdaIntegration(apiDocsLambda),
+      {
+        requestParameters: {
+          "method.request.querystring.ui": false,
+        }
+      }
+    );
 
     // Handle integration of lambda from api_gateway
     // POST https://example.com/blogposts
